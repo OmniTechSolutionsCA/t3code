@@ -63,6 +63,9 @@ jobs:
           name: js-bundle
           path: apps
 
+      - name: Build Linux CLI executable
+        run: node apps/server/scripts/cli.ts build-exe
+
       - name: Build Linux CLI archive for WSL
         run: node scripts/build-cli-archive.ts --platform linux --arch x64 --version 0.1.12
 
