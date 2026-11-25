@@ -31,8 +31,10 @@ import {
   makeAntigravityStderrHandler,
   makeAntigravityStdoutTransform,
   antigravityLoginResponse,
+  antigravityThreadAppDataDir,
   parseAntigravityAuthorizationUrl,
   prepareAntigravityProfile,
+  prepareAntigravityThreadAppDataDir,
   resolveAntigravityInstanceDirectories,
 } from "./antigravityAuthSupport.ts";
 
@@ -110,6 +112,61 @@ describe("Antigravity process environment", () => {
       },
     });
   });
+
+  it("uses a custom appDataDir when provided so concurrent threads do not share conversations", () => {
+    const spawn = buildAntigravityAcpSpawnInput({
+      installation: { executablePath: "/usr/bin/agy" },
+      profile,
+      cwd: "/project",
+      appDataDir: "antigravity-acp-threads/thread-1",
+    });
+
+    expect(spawn.args).toEqual([
+      "acp",
+      "--gemini-dir",
+      profile.geminiHome,
+      "--app-data-dir",
+      "antigravity-acp-threads/thread-1",
+    ]);
+  });
+
+  it.effect(
+    "prepares an isolated thread appDataDir with auth/config but without conversations",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const tempDir = yield* fs.makeTempDirectoryScoped();
+        const profileDir = path.join(tempDir, "profile");
+        const acpDir = path.join(profileDir, "antigravity-acp");
+        yield* fs.makeDirectory(path.join(acpDir, "conversations"), { recursive: true });
+        yield* fs.writeFileString(path.join(acpDir, "acp_token.json"), '{"token":"secret"}');
+        yield* fs.writeFileString(path.join(acpDir, "settings.json"), '{"disableAutoUpdate":true}');
+        yield* fs.writeFileString(path.join(acpDir, "conversations", "other.db"), "db-content");
+
+        const threadProfile: AntigravityProfile = {
+          ...profile,
+          geminiHome: profileDir,
+          acpDirectory: acpDir,
+          tokenPath: path.join(acpDir, "acp_token.json"),
+        };
+        const appDataDir = antigravityThreadAppDataDir("thread:123");
+        const threadDir = yield* prepareAntigravityThreadAppDataDir({
+          profile: threadProfile,
+          threadId: "thread:123",
+        });
+
+        expect(appDataDir).toBe("antigravity-acp-threads/thread_123");
+        expect(threadDir).toBe(path.join(profileDir, appDataDir));
+        expect(yield* fs.readFileString(path.join(threadDir, "acp_token.json"))).toBe(
+          '{"token":"secret"}',
+        );
+        expect(yield* fs.readFileString(path.join(threadDir, "settings.json"))).toBe(
+          '{"disableAutoUpdate":true}',
+        );
+        expect(yield* fs.exists(path.join(threadDir, "conversations", "other.db"))).toBe(false);
+      }).pipe(Effect.provide(NodeServices.layer)),
+  );
 
   it("passes only the configured method's credential and keeps the GCP pair out of the environment", () => {
     const baseEnv = { PATH: "/usr/bin", GOOGLE_API_KEY: "ambient-key" };

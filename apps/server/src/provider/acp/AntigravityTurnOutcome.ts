@@ -287,11 +287,12 @@ const conversationSegments = ["antigravity-acp", "conversations"];
 export const watchAntigravityPromptOutcome = Effect.fn("AntigravityTurnOutcome.watch")(function* (
   profileDirectory: string,
   sessionId: string,
+  appDataDir = "antigravity-acp",
 ) {
   const typedOnly = (result: EffectAcpSchema.PromptResponse) =>
     DateTime.now.pipe(Effect.map((now) => turnFailure(result.stopReason, undefined, now)));
   if (!NATIVE_SESSION_ID.test(sessionId)) return typedOnly;
-  const segments = [...conversationSegments, `${sessionId}.db`];
+  const segments = [...appDataDir.split(/[/\\]/), "conversations", `${sessionId}.db`];
   const before = yield* Effect.tryPromise({
     try: async () => {
       const root = await antigravityProfileRoot(profileDirectory);

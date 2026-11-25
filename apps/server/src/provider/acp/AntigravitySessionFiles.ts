@@ -57,13 +57,14 @@ function decodeTrajectoryOwnership(blob: Uint8Array):
 async function readDatabaseWorkspacePaths(
   profileDirectory: string,
   sessionId: string,
+  appDataDir = "antigravity-acp",
 ): Promise<ReadonlyArray<string> | undefined> {
   const profileRoot = await antigravityProfileRoot(profileDirectory);
   if (profileRoot === undefined) return undefined;
   const databasePath = (
     await antigravityManagedPath(
       profileRoot,
-      ["antigravity-acp", "conversations", `${sessionId}.db`],
+      [...appDataDir.split(/[/\\]/), "conversations", `${sessionId}.db`],
       "file",
     )
   )?.path;
@@ -120,6 +121,7 @@ export const removeAntigravitySessionFiles = Effect.fn("removeAntigravitySession
     readonly profileDirectory: string;
     readonly sessionId: string | undefined;
     readonly cwd: string;
+    readonly appDataDir?: string;
   }) {
     const { sessionId } = input;
     if (sessionId === undefined || !isNativeSessionId(sessionId)) {
@@ -127,7 +129,8 @@ export const removeAntigravitySessionFiles = Effect.fn("removeAntigravitySession
     }
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const acpDirectory = path.join(input.profileDirectory, "antigravity-acp");
+    const appDataDir = input.appDataDir ?? "antigravity-acp";
+    const acpDirectory = path.join(input.profileDirectory, appDataDir);
     const base = path.join(acpDirectory, "conversations", sessionId);
 
     if (yield* fs.exists(`${base}.meta`)) {
@@ -140,7 +143,7 @@ export const removeAntigravitySessionFiles = Effect.fn("removeAntigravitySession
     } else {
       // Antigravity CLI 1.5+ writes no `.meta` sidecar; workspace URIs live in the session DB.
       const workspacePaths = yield* Effect.promise(() =>
-        readDatabaseWorkspacePaths(input.profileDirectory, sessionId),
+        readDatabaseWorkspacePaths(input.profileDirectory, sessionId, appDataDir),
       );
       if (workspacePaths === undefined || workspacePaths.length === 0) {
         return;

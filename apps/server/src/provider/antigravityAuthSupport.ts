@@ -544,6 +544,57 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
   return profile;
 });
 
+export function antigravityThreadAppDataDir(threadId: string): string {
+  const safeId = threadId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `antigravity-acp-threads/${safeId}`;
+}
+
+const THREAD_SHARED_FILES = [
+  "antigravity-oauth-token",
+  "acp_token.json",
+  "installation_id",
+  "settings.json",
+  "mcp_config.json",
+  "mcp_oauth_tokens.json",
+] as const;
+
+export const prepareAntigravityThreadAppDataDir = Effect.fn("prepareAntigravityThreadAppDataDir")(
+  function* (input: {
+    readonly profile: AntigravityProfile;
+    readonly threadId: string;
+  }): Effect.fn.Return<string, AcpErrors.AcpError, FileSystem.FileSystem | Path.Path> {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const relativeDir = antigravityThreadAppDataDir(input.threadId);
+    const targetDir = path.join(input.profile.geminiHome, relativeDir);
+    yield* fs
+      .makeDirectory(targetDir, { recursive: true })
+      .pipe(
+        Effect.mapError(() =>
+          authSupportError("Could not create the Antigravity thread data directory."),
+        ),
+      );
+
+    for (const fileName of THREAD_SHARED_FILES) {
+      const source = path.join(input.profile.acpDirectory, fileName);
+      const dest = path.join(targetDir, fileName);
+      const exists = yield* fs.exists(source).pipe(Effect.orElseSucceed(() => false));
+      if (!exists) continue;
+      const destExists = yield* fs.exists(dest).pipe(Effect.orElseSucceed(() => false));
+      if (destExists) continue;
+      if (input.profile.platform === "win32") {
+        yield* fs.copyFile(source, dest).pipe(Effect.ignore);
+      } else {
+        yield* fs
+          .symlink(source, dest)
+          .pipe(Effect.catch(() => fs.copyFile(source, dest).pipe(Effect.ignore)));
+      }
+    }
+
+    return targetDir;
+  },
+);
+
 export function buildAntigravityAcpSpawnInput(input: {
   readonly installation: { readonly executablePath: string };
   readonly profile: AntigravityProfile;
@@ -551,6 +602,7 @@ export function buildAntigravityAcpSpawnInput(input: {
   readonly baseEnv?: NodeJS.ProcessEnv;
   readonly auth?: AntigravityAuthConfig;
   readonly runtimeTempDirectory?: string;
+  readonly appDataDir?: string;
 }): AcpSessionRuntime.AcpSpawnInput {
   return {
     command: input.installation.executablePath,
@@ -560,7 +612,7 @@ export function buildAntigravityAcpSpawnInput(input: {
       input.profile.geminiHome,
       "--app-data-dir",
       // The CLI joins this beneath gemini-dir, including when the value is absolute.
-      "antigravity-acp",
+      input.appDataDir ?? "antigravity-acp",
     ],
     cwd: input.cwd,
     env: antigravityEnvironment(

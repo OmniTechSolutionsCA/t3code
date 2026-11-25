@@ -42,9 +42,11 @@ import {
   antigravityAuthConfigIssue,
   antigravityAuthLabel,
   antigravityAuthUsesBrowser,
+  antigravityThreadAppDataDir,
   buildAntigravityAcpSpawnInput,
   isAntigravitySignInRequiredError,
   prepareAntigravityProfile,
+  prepareAntigravityThreadAppDataDir,
   resolveAntigravityInstanceDirectories,
   type AntigravityAuthConfig,
 } from "../antigravityAuthSupport.ts";
@@ -223,6 +225,7 @@ export const AntigravityDriver: ProviderDriver<
     const prepareSpawn = Effect.fn("AntigravityDriver.prepareSpawn")(function* (
       cwd: string,
       baseEnv: NodeJS.ProcessEnv,
+      threadId?: string,
     ): Effect.fn.Return<
       {
         readonly executable: AntigravityInstallation.AntigravityExecutable;
@@ -294,6 +297,16 @@ export const AntigravityDriver: ProviderDriver<
               ),
             ),
       );
+      const appDataDir = threadId !== undefined ? antigravityThreadAppDataDir(threadId) : undefined;
+      if (threadId !== undefined) {
+        yield* prepareAntigravityThreadAppDataDir({
+          profile,
+          threadId,
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        );
+      }
       return {
         executable,
         spawn: buildAntigravityAcpSpawnInput({
@@ -303,6 +316,7 @@ export const AntigravityDriver: ProviderDriver<
           baseEnv,
           auth,
           runtimeTempDirectory,
+          ...(appDataDir !== undefined ? { appDataDir } : {}),
         }),
       };
     });
@@ -322,6 +336,7 @@ export const AntigravityDriver: ProviderDriver<
         threadEnvironment === undefined
           ? processEnvironment
           : { ...processEnvironment, ...threadEnvironment },
+        runtimeInput.threadId,
       );
       const runtime = yield* makeAntigravityAcpRuntime({
         ...runtimeInput,
