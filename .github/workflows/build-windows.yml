@@ -64,7 +64,7 @@ jobs:
           path: apps
 
       - name: Build Linux CLI archive for WSL
-        run: node scripts/build-cli-archive.ts --platform linux --arch x64
+        run: node scripts/build-cli-archive.ts --platform linux --arch x64 --version 0.1.12
 
       - name: Upload Linux CLI archive
         uses: actions/upload-artifact@v4
