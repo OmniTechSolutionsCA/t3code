@@ -1,0 +1,116 @@
+name: Build Windows Desktop Installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Build desktop JS bundle
+        env:
+          T3CODE_TELEMETRY_CHANNEL: dev
+        run: corepack pnpm build:desktop
+
+      - name: Upload JS bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-bundle
+          path: |
+            apps/server/dist
+            apps/desktop/dist-electron
+
+  build_linux_cli:
+    needs: build_bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Download JS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: js-bundle
+          path: apps
+
+      - name: Build Linux CLI archive for WSL
+        run: node scripts/build-cli-archive.ts --platform linux --arch x64 --skip-build
+
+      - name: Upload Linux CLI archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-x64
+          path: release-cli/*
+
+  build_windows:
+    needs: [build_bundle, build_linux_cli]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Download JS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: js-bundle
+          path: apps
+
+      - name: Download Linux CLI archive for WSL
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-linux-x64
+          path: wsl-runtime
+
+      - name: Build Windows desktop installer
+        shell: bash
+        run: node scripts/build-desktop-artifact.ts --platform win --target x64 --arch x64 --skip-build --verbose
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: t3code-windows-x64
+          path: release/*.exe
