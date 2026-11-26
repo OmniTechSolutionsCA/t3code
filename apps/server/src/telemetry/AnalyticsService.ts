@@ -127,7 +127,7 @@ export const make = Effect.gen(function* () {
   const telemetryConfig = yield* TelemetryEnvConfig;
   const hostEnvironment = yield* HostProcess.Environment;
   const awaitingShellConsent = hostEnvironment.T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING === "1";
-  const enabledByDefault = !isCiEnvironment(hostEnvironment);
+  const enabledByDefault = false;
   const enabledAtStartup = Option.getOrElse(telemetryConfig.enabled, () => enabledByDefault);
   // A managed policy can switch analytics off over the environment, never on.
   const policyAllows =
