@@ -336,7 +336,7 @@ export const AntigravityDriver: ProviderDriver<
         threadEnvironment === undefined
           ? processEnvironment
           : { ...processEnvironment, ...threadEnvironment },
-        runtimeInput.threadId,
+        runtimeInput.resumeSessionId,
       );
       const runtime = yield* makeAntigravityAcpRuntime({
         ...runtimeInput,
